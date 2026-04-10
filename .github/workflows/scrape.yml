@@ -8,14 +8,6 @@ on:
         required: true
         default: '1000'
         type: string
-      mode:
-        description: 'Scraper mode'
-        required: true
-        default: 'history'
-        type: choice
-        options:
-          - history
-          - full
 
   schedule:
     - cron: '0 8 * * 0'
@@ -23,16 +15,52 @@ on:
 jobs:
   scrape:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install -r requirements.txt
-      - run: python main.py OhioLiquor --mode history --limit 1000 --no-media
-      - run: |
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+      - name: Update mirrors in scraper
+        run: |
+          python -c "
+          import re
+          with open('main.py', 'r') as f:
+              content = f.read()
+          new_mirrors = '''MIRRORS = [
+              \"https://old.reddit.com\",
+              \"https://reddit.com\",
+              \"https://libreddit.kavin.rocks\",
+              \"https://libreddit.uest.cc\",
+              \"https://redlib.se\",
+              \"https://r.nf\"
+          ]'''
+          content = re.sub(r'MIRRORS = \[.*?\]', new_mirrors, content, flags=re.DOTALL)
+          with open('main.py', 'w') as f:
+              f.write(content)
+          print('Updated mirrors')
+          "
+      - name: Run scraper with comments
+        run: |
+          python main.py OhioLiquor --mode full --limit 1000
+        continue-on-error: true
+      - name: Check for data
+        run: |
+          echo "=== Data folder ==="
+          ls -la data/ 2>/dev/null || echo "No data folder"
+          echo "=== Subreddit data ==="
+          ls -la data/r_OhioLiquor/ 2>/dev/null || echo "No subreddit data"
+      - name: Show sample data
+        run: |
+          head -5 data/r_OhioLiquor/posts.csv 2>/dev/null || echo "No posts data"
+      - name: Commit results
+        run: |
           git config --local user.email "max@openclaw.ai"
           git config --local user.name "Max Bot"
           git add data/
           git commit -m "Add scraped data $(date +%Y-%m-%d)" || echo "No changes"
-          git push
+          git push || echo "Push failed"
