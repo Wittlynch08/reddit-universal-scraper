@@ -1,0 +1,38 @@
+name: Scrape r/OhioLiquor
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: 'Number of posts to scrape'
+        required: true
+        default: '1000'
+        type: string
+      mode:
+        description: 'Scraper mode'
+        required: true
+        default: 'history'
+        type: choice
+        options:
+          - history
+          - full
+
+  schedule:
+    - cron: '0 8 * * 0'
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - run: python main.py OhioLiquor --mode history --limit 1000 --no-media
+      - run: |
+          git config --local user.email "max@openclaw.ai"
+          git config --local user.name "Max Bot"
+          git add data/
+          git commit -m "Add scraped data $(date +%Y-%m-%d)" || echo "No changes"
+          git push
